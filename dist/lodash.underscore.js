@@ -441,6 +441,23 @@
   }
 
   /**
+   * Checks if the provided arguments are from an iteratee call.
+   *
+   * @private
+   * @param {*} value The potential iteratee value argument.
+   * @param {*} index The potential iteratee index or key argument.
+   * @param {*} object The potential iteratee object argument.
+   * @returns {boolean} Returns `true` if the arguments are from an iteratee call, else `false`.
+   */
+  function isIterateeCall(value, index, object) {
+    var indexType = typeof index,
+        objectType = typeof object;
+
+    return (object && (indexType == 'number' || indexType == 'string') &&
+      (objectType == 'function' || objectType == 'object') && object[index] === value) || false;
+  }
+
+  /**
    * Replaces all `placeholder` elements in `array` with an internal placeholder
    * and returns an array of their indexes.
    *
@@ -1980,15 +1997,7 @@
    */
   function flatten(array, isDeep, guard) {
     var length = array ? array.length : 0;
-    if (!length) {
-      return [];
-    }
-    // enables use as a callback for functions like `_.map`
-    var type = typeof isDeep;
-    if ((type == 'number' || type == 'string') && guard && guard[isDeep] === array) {
-      isDeep = false;
-    }
-    return baseFlatten(array, !isDeep);
+    return length ? baseFlatten(array, guard ? true : !isDeep) : [];
   }
 
   /**
@@ -2212,6 +2221,10 @@
     var index = -1,
         length = array ? array.length : 0;
 
+    if (isIterateeCall(array, start, end)) {
+      start = 0;
+      end = length;
+    }
     start = start == null ? 0 : (+start || 0);
     if (start < 0) {
       start = -start > length ? 0 : (length + start);
@@ -2384,16 +2397,10 @@
       return [];
     }
     // juggle arguments
-    var type = typeof isSorted;
-    if (type != 'boolean' && isSorted != null) {
+    if (typeof isSorted != 'boolean' && isSorted != null) {
       thisArg = iteratee;
-      iteratee = isSorted;
+      iteratee = isIterateeCall(array, isSorted, thisArg) ? null : isSorted;
       isSorted = false;
-
-      // enables use as a callback for functions like `_.map`
-      if ((type == 'number' || type == 'string') && thisArg && thisArg[iteratee] === array) {
-        iteratee = null;
-      }
     }
     if (iteratee != null) {
       iteratee = baseCallback(iteratee, thisArg, 3);
@@ -3110,14 +3117,11 @@
    * // => { 'user': 'fred', 'age': 40 };
    */
   function max(collection, iteratee, thisArg) {
-    var computed = -Infinity,
-        result = computed,
-        type = typeof iteratee;
-
-    // enables use as a callback for functions like `_.map`
-    if ((type == 'number' || type == 'string') && thisArg && thisArg[iteratee] === collection) {
+    if (isIterateeCall(collection, iteratee, thisArg)) {
       iteratee = null;
     }
+    var computed = -Infinity,
+        result = computed;
 
     if (iteratee == null) {
       var index = -1,
@@ -3188,14 +3192,11 @@
    * // => { 'user': 'barney', 'age': 36 };
    */
   function min(collection, iteratee, thisArg) {
-    var computed = Infinity,
-        result = computed,
-        type = typeof iteratee;
-
-    // enables use as a callback for functions like `_.map`
-    if ((type == 'number' || type == 'string') && thisArg && thisArg[iteratee] === collection) {
+    if (isIterateeCall(collection, iteratee, thisArg)) {
       iteratee = null;
     }
+    var computed = Infinity,
+        result = computed;
 
     if (iteratee == null) {
       var index = -1,
@@ -3420,7 +3421,7 @@
    * // => [3, 1]
    */
   function sample(collection, n, guard) {
-    if (n == null || guard) {
+    if (guard || n == null) {
       collection = toIterable(collection);
       var length = collection.length;
       return length > 0 ? collection[baseRandom(0, length - 1)] : undefined;
@@ -3589,10 +3590,16 @@
    * // = > [['barney', 26], ['barney', 36], ['fred', 30], ['fred', 40]]
    */
   function sortBy(collection, iteratee, thisArg) {
+    if (isIterateeCall(collection, iteratee, thisArg)) {
+      iteratee = null;
+    }
     var index = -1,
-        length = collection && collection.length,
-        result = Array(length < 0 ? 0 : length >>> 0);
+        length = collection ? collection.length : 0,
+        result = [];
 
+    if (typeof length == 'number' && length > -1 && length <= MAX_SAFE_INTEGER) {
+      result.length = length;
+    }
     iteratee = baseCallback(iteratee, thisArg, 3);
     baseEach(collection, function(value, key, collection) {
       result[++index] = {
@@ -4409,8 +4416,8 @@
    * // => false
    */
   function isBoolean(value) {
-    return (value === true || value === false ||
-      value && typeof value == 'object' && toString.call(value) == boolClass) || false;
+    return (value === true || value === false || value && typeof value == 'object' &&
+      toString.call(value) == boolClass) || false;
   }
 
   /**
@@ -4746,8 +4753,7 @@
    */
   function isNumber(value) {
     var type = typeof value;
-    return type == 'number' ||
-      (value && type == 'object' && toString.call(value) == numberClass) || false;
+    return type == 'number' || (value && type == 'object' && toString.call(value) == numberClass) || false;
   }
 
   /**
@@ -4787,8 +4793,8 @@
    * // => false
    */
   function isString(value) {
-    return typeof value == 'string' ||
-      (value && typeof value == 'object' && toString.call(value) == stringClass) || false;
+    return typeof value == 'string' || (value && typeof value == 'object' &&
+      toString.call(value) == stringClass) || false;
   }
 
   /**
@@ -4847,10 +4853,9 @@
     }
     var args = arguments,
         index = 0,
-        length = args.length,
-        type = typeof args[2];
+        length = args.length;
 
-    if ((type == 'number' || type == 'string') && args[3] && args[3][args[2]] === args[1]) {
+    if (isIterateeCall(args[1], args[2], args[3])) {
       length = 2;
     }
     while (++index < length) {
@@ -4884,10 +4889,9 @@
     }
     var args = arguments,
         index = 0,
-        length = args.length,
-        type = typeof args[2];
+        length = args.length;
 
-    if ((type == 'number' || type == 'string') && args[3] && args[3][args[2]] === args[1]) {
+    if (isIterateeCall(args[1], args[2], args[3])) {
       length = 2;
     }
     while (++index < length) {
@@ -4950,6 +4954,7 @@
    * @category Object
    * @param {Object} object The object to invert.
    * @param {boolean} [multiValue=false] Allow multiple values per key.
+   * @param- {Object} [guard] Enables use as a callback for functions like `_.map`.
    * @returns {Object} Returns the new inverted object.
    * @example
    *
@@ -5312,6 +5317,9 @@
     var _ = lodash,
         settings = _.templateSettings;
 
+    if (isIterateeCall(string, options, otherOptions)) {
+      options = otherOptions = null;
+    }
     string = String(string == null ? '' : string);
     options = defaults({}, otherOptions || options, settings);
 
@@ -5428,6 +5436,7 @@
    * @category Utility
    * @param {*} [func=identity] The value to convert to a callback.
    * @param {*} [thisArg] The `this` binding of the created callback.
+   * @param- {Object} [guard] Enables use as a callback for functions like `_.map`.
    * @returns {Function} Returns the new function.
    * @example
    *
@@ -5450,8 +5459,8 @@
    * _.filter(users, 'age__gt38');
    * // => [{ 'user': 'fred', 'age': 40 }]
    */
-  function callback(func, thisArg) {
-    return baseCallback(func, thisArg);
+  function callback(func, thisArg, guard) {
+    return baseCallback(func, guard ? undefined : thisArg);
   }
 
   /**
@@ -5702,7 +5711,8 @@
    * _.random(1.2, 5.2);
    * // => a floating-point number between 1.2 and 5.2
    */
-  function random(min, max) {
+  function random(min, max, guard) {
+    max = guard ? null : max;
     if (min == null && max == null) {
       max = 1;
     }
@@ -5749,13 +5759,10 @@
    * // => []
    */
   function range(start, end, step) {
-    start = +start || 0;
-
-    // enables use as a callback for functions like `_.map`
-    var type = typeof end;
-    if ((type == 'number' || type == 'string') && step && step[end] === start) {
+    if (isIterateeCall(start, end, step)) {
       end = step = null;
     }
+    start = +start || 0;
     step = +step || 1;
 
     if (end == null) {
